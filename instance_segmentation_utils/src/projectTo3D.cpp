@@ -28,7 +28,7 @@ ProjectTo3D::ProjectTo3D() : Node("ProjectInstancesTo3D"), m_tfBuffer(get_clock(
     m_cameraSub = create_subscription<Image>(camera_topic, 5, [this](const Image::SharedPtr msg) { m_lastImage = msg; });
 
     m_detectronClient = create_client<segmentation_msgs::srv::SegmentImage>("/detectron/segment");
-    m_pub3D = create_publisher<ObjectWithBoundingBox3DArray>("semantic_instances_3D", 10);
+    m_pub3D = create_publisher<Detection3DArray>("semantic_instances_3D", 10);
 
     m_cameraCalibration.centerX = declare_parameter<float>("imageCenter_x", 320);
     m_cameraCalibration.centerY = declare_parameter<float>("imageCenter_y", 240);
@@ -79,7 +79,7 @@ void ProjectTo3D::projectInstancesAndPublish(segmentation_msgs::srv::SegmentImag
     cv::Mat y_coord(cv::Size(depth.rows, depth.cols), CV_32FC1);
     cv::Mat z_coord(cv::Size(depth.rows, depth.cols), CV_32FC1);
     {
-#pragma omp parallel for collapse(2)
+        #pragma omp parallel for collapse(2)
         for (int column = 0; column < x_coord.cols; column++)
         {
             for (int row = 0; row < x_coord.rows; row++)
@@ -94,13 +94,13 @@ void ProjectTo3D::projectInstancesAndPublish(segmentation_msgs::srv::SegmentImag
 
     // process the instances
 
-    ObjectWithBoundingBox3DArray objectsArray;
+    Detection3DArray objectsArray;
     for (const segmentation_msgs::msg::SemanticInstance2D& instance : response->instances)
     {
-        objectsArray.objects.emplace_back();
-        segmentation_msgs::msg::ObjectWithBoundingBox3D& objectBB = objectsArray.objects.back();
+        objectsArray.detections.emplace_back();
+        Detection3D& detection = objectsArray.detections.back();
 
-        objectBB.classifications = instance.classifications;
+        detection.results = instance.detection.results;
 
         cv_bridge::CvImagePtr mask = cv_bridge::toCvCopy(instance.mask);
 
@@ -130,17 +130,18 @@ void ProjectTo3D::projectInstancesAndPublish(segmentation_msgs::srv::SegmentImag
         geometry_msgs::msg::TransformStamped cameraToMap =
             m_tfBuffer.buffer.lookupTransform(image_header.frame_id, "map", tf2_ros::fromMsg(image_header.stamp));
 
-        objectBB.size.x = x_max - x_min;
-        objectBB.size.y = y_max - y_min;
-        objectBB.size.z = z_max - z_min; // originally, this was the stdDev of the z values in the mask
-        tf2::doTransform(objectBB.size, objectBB.size, cameraToMap);
+        detection.header.frame_id = "map";
+        detection.header.stamp = image_header.stamp;
+        
+        detection.bbox.size.x = x_max - x_min;
+        detection.bbox.size.y = y_max - y_min;
+        detection.bbox.size.z = z_max - z_min; // originally, this was the stdDev of the z values in the mask
+        tf2::doTransform(detection.bbox.size, detection.bbox.size, cameraToMap);
 
-        objectBB.center.header.frame_id = "map";
-        objectBB.center.header.stamp = image_header.stamp;
-        objectBB.center.point.x = x_min + objectBB.size.x * 0.5;
-        objectBB.center.point.y = y_min + objectBB.size.y * 0.5;
-        objectBB.center.point.z = z_min + objectBB.size.z * 0.5;
-        tf2::doTransform(objectBB.center, objectBB.center, cameraToMap);
+        detection.bbox.center.position.x = x_min + detection.bbox.size.x * 0.5;
+        detection.bbox.center.position.y = y_min + detection.bbox.size.y * 0.5;
+        detection.bbox.center.position.z = z_min + detection.bbox.size.z * 0.5;
+        tf2::doTransform(detection.bbox.center, detection.bbox.center, cameraToMap);
     }
 
     m_pub3D->publish(objectsArray);
