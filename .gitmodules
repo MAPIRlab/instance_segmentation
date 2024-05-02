@@ -1,0 +1,6 @@
+[submodule "Detectron2_ros"]
+	path = Detectron2_ros
+	url = git@github.com:MAPIRlab/Detectron2_ros.git
+[submodule "segmentation_msgs"]
+	path = segmentation_msgs
+	url = git@github.com:MAPIRlab/segmentation_msgs.git
