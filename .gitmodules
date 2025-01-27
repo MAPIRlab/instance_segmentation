@@ -4,3 +4,6 @@
 [submodule "segmentation_msgs"]
 	path = segmentation_msgs
 	url = git@github.com:MAPIRlab/segmentation_msgs.git
+[submodule "yolo_ros"]
+	path = yolo_ros
+	url = git@github.com:MAPIRlab/yolo_ros.git
