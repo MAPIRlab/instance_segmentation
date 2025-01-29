@@ -52,7 +52,8 @@ ProjectTo3D::ProjectTo3D() : Node("ProjectInstancesTo3D"), m_tfBuffer(get_clock(
     m_pclPub = create_publisher<PointCloud2>("/semanticPointCloud", 10);
 
     RCLCPP_INFO(get_logger(), "Expecting detectron service in: %s", detectronTopic);
-    while (!m_detectronClient->wait_for_service(std::chrono::seconds(5))) RCLCPP_INFO(get_logger(), "Waiting for service to become available...");
+    while (rclcpp::ok() && !m_detectronClient->wait_for_service(std::chrono::seconds(5)))
+        RCLCPP_INFO(get_logger(), "Waiting for service to become available...");
     RCLCPP_INFO(get_logger(), "Found detectron, ready for action!");
 }
 
@@ -105,20 +106,20 @@ void ProjectTo3D::processImage()
 }
 
 void ProjectTo3D::projectInstancesAndPublish(segmentation_msgs::srv::SegmentImage::Response::SharedPtr response, const cv::Mat& depth,
-                                             const image_geometry::PinholeCameraModel& cameraModel, std_msgs::msg::Header image_header)
+        const image_geometry::PinholeCameraModel& cameraModel, std_msgs::msg::Header image_header)
 {
     clearMarkers();
 
     // 3D coordinates of the point that corresponds to each specific pixel in the image (camera space)
     cv::Mat coord3D(depth.rows, depth.cols, CV_32FC3);
     {
-#pragma omp parallel for collapse(2)
+        #pragma omp parallel for collapse(2)
         for (int column = 0; column < coord3D.cols; column++)
         {
             for (int row = 0; row < coord3D.rows; row++)
             {
                 // TODO make the type be inferred from m_depthFormat
-                float z = depthToMeters(depth.at<uint16_t>(row, column), DepthType::Unity);
+                float z = depthToMeters(depth.at<uint16_t>(row, column), DepthType::Millimeters);
 
                 cv::Point2d imagePoint = cameraModel.rectifyPoint(cv::Point2d(column, row));
                 cv::Point3d rayDirection = cameraModel.projectPixelTo3dRay(imagePoint);
@@ -142,7 +143,7 @@ void ProjectTo3D::projectInstancesAndPublish(segmentation_msgs::srv::SegmentImag
         // cv::imshow("mask", mask->image);
         // cv::waitKey(30);
 
-        cv::erode(mask, mask, cv::Mat::ones(10,10, CV_8U));
+        cv::erode(mask, mask, cv::Mat::ones(10, 10, CV_8U)); // remove the edges of the mask to avoid getting background points into the BB
 
         // Get the masked point cloud, and record the min and max coords in world
         MinMaxBounds bounds = getBoundsSingleMask(mask, coord3D, image_header);
@@ -183,9 +184,9 @@ MinMaxBounds ProjectTo3D::getBoundsSingleMask(const cv::Mat& mask, const cv::Mat
             if (mask.at<uint8_t>(i, j) != 0)
             {
                 geometry_msgs::msg::Point cameraPoint;
-                cameraPoint.x = coord3D.at<cv::Vec3f>(i,j)[0];
-                cameraPoint.y = coord3D.at<cv::Vec3f>(i,j)[1];
-                cameraPoint.z = coord3D.at<cv::Vec3f>(i,j)[2];
+                cameraPoint.x = coord3D.at<cv::Vec3f>(i, j)[0];
+                cameraPoint.y = coord3D.at<cv::Vec3f>(i, j)[1];
+                cameraPoint.z = coord3D.at<cv::Vec3f>(i, j)[2];
 
                 // transform point cloud to world space to get the AABB
                 geometry_msgs::msg::Point worldPoint;
@@ -218,7 +219,7 @@ float ProjectTo3D::depthToMeters(double depth, DepthType type)
         constexpr float max_range = 10.0f;
         return (depth / std::numeric_limits<uint16_t>::max()) * max_range;
     }
-    else if (type == DepthType::Millimiters)
+    else if (type == DepthType::Millimeters)
     {
         return depth * 0.001;
     }
@@ -266,9 +267,9 @@ void ProjectTo3D::visualizePointCloud(const cv::Mat& mask, const cv::Mat& coord3
             if (mask.at<uint8_t>(i, j) != 0)
             {
                 geometry_msgs::msg::Point cameraPoint;
-                cameraPoint.x = coord3D.at<cv::Vec3f>(i,j)[0];
-                cameraPoint.y = coord3D.at<cv::Vec3f>(i,j)[1];
-                cameraPoint.z = coord3D.at<cv::Vec3f>(i,j)[2];
+                cameraPoint.x = coord3D.at<cv::Vec3f>(i, j)[0];
+                cameraPoint.y = coord3D.at<cv::Vec3f>(i, j)[1];
+                cameraPoint.z = coord3D.at<cv::Vec3f>(i, j)[2];
                 pcl::PointXYZ pcl_point(cameraPoint.x, cameraPoint.y, cameraPoint.z);
                 pcl.points.push_back(pcl_point);
             }

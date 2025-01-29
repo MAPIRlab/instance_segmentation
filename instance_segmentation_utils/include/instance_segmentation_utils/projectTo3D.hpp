@@ -29,7 +29,7 @@ struct MinMaxBounds
     geometry_msgs::msg::Point max;
 };
 
-enum class DepthType{Unity, Millimiters};
+enum class DepthType{Unity, Millimeters};
 
 class ProjectTo3D : public rclcpp::Node
 {
